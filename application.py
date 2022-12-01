@@ -29,24 +29,34 @@ courseurl = "http://127.0.0.1:5011/course/"
 coursepreference = "http://127.0.0.1:5011/course/student_preference/"
 studenturl = "http://127.0.0.1:2333/students/"
 
-async def get_profile(uni):
-    with open("application.json") as json_file:
-        json_decoded = json.load(json_file)[uni]
-        try:
-            profile = json_decoded["profile"]
-        except:
-            return False
-    return profile
+# decorator for verifying the JWT
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        # check jwt is passed in the request header
+        if 'access-token' in request.headers:
+            token = request.headers['access-token']
+        if not token:
+            return Response("TOKEN IS MISSING", status=401, content_type="text/plain")
 
-async def get_uni(uni):
-    with open("application.json") as json_file:
-        json_decoded = json.load(json_file)[uni]
-        print(json_decoded)
         try:
-            uni = json_decoded["uni"]
+            # decoding the payload to fetch the stored details
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms="HS256")
+            uni, email = data['uni'], data['email']
         except:
-            return False
-    return uni
+            return Response("TOKEN IS INVALID", status=401, content_type="text/plain")
+        # returns the current logged-in users contex to the routes
+        return f(uni, email, *args, **kwargs)
+
+    return decorated
+
+def get_profile(uni):
+    profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
+    try:
+        return profile_rsp.json()
+    except:
+        return False
 
 
 @app.route("/course/", methods=["GET"])
@@ -96,15 +106,16 @@ async def add_course_preference():
     if not request_data:
         rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
         return rsp
+    uni = request_data['uni']
+    profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
+    try:
+        profile_rsp = profile_rsp.json()
+    except:
+        return Response("You should first edit profile before you check or add preference", status=404, content_type="text/plain")
+    if profile_rsp['uni'] != uni:
+        return Response("You should check or add your own preference", status=404, content_type="text/plain")
     uni, course_id, timezone, dept, message = request_data['uni'], request_data['course_id'], request_data['timezone'], \
                                               request_data['Dept'], request_data['message']
-    ##Make Sure user must edit profile and log in before other operations
-    loop = asyncio.get_event_loop()
-    t1 = loop.create_task(get_profile(uni))
-    t2 = loop.create_task(get_uni(uni))
-    profile, uni = await asyncio.gather(t1, t2)
-    if not uni or not profile:
-        return Response("You have not logged in or not edited profile", status=404, content_type="text/plain")
     rsp = requests.session().post(coursepreference + 'add', verify=False,
         json={'uni':uni, 'course_id':course_id, 'timezone':timezone, 'Dept':dept, 'message':message })
     if rsp.status_code == 200:
@@ -117,15 +128,13 @@ async def add_course_preference():
 async def get_course_preference_by_uni(uni = "", limit = "", offset = ""):
     if "uni" in request.args and "limit" in request.args and "offset" in request.args:
         uni, limit, offset = request.args["uni"], request.args["limit"], request.args["offset"]
-    ##Make Sure user must edit profile and log in before other operations
-    loop = asyncio.get_event_loop()
-    t1 = loop.create_task(get_profile(uni))
-    t2 = loop.create_task(get_uni(uni))
-    profile, uni = await asyncio.gather(t1, t2)
-    print(uni)
-    print(profile)
-    if not uni or not profile:
-        return Response("You have not logged in or not edited profile", status=404, content_type="text/plain")
+    profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
+    try:
+        profile_rsp = profile_rsp.json()
+    except:
+        return Response("You should first edit profile before you check or add preference", status=404, content_type="text/plain")
+    if profile_rsp['uni'] != uni:
+        return Response("You should check or add your own preference", status=404, content_type="text/plain")
     rsp = requests.session().get(coursepreference + '?uni=' + uni +'&limit=' + limit + '&offset=' + offset, verify=False)
     if rsp.status_code == 200:
         rsp = Response(json.dumps(rsp.json()), status=200, content_type="application.json")
@@ -175,7 +184,7 @@ def delete_course_preference_by_id_and_uni():
         rsp = Response("No existed Preference is found!", status=404, content_type="text/plain")
     return rsp
 
-@app.route("/students/login", methods=['POST'])
+@app.route("/students/login", methods=['POST', 'GET'])
 def login():
     request_data = request.get_json()
     uni, password = request_data['uni'], request_data['password']
@@ -183,53 +192,31 @@ def login():
     if rsp.status_code == 200:
         rsp_json = rsp.json()
         rsp = Response(json.dumps(rsp.json()), status=200, content_type="text/plain")
-        try:
-            with open("application.json") as json_file:
-                json_decoded = json.load(json_file)
-            json_decoded[uni] = {"uni": uni}
-            with open("application.json", 'w') as json_file:
-                json.dump(json_decoded, json_file)
-        except:
-            json_decoded = {}
-            json_decoded[uni] = {"uni": uni}
-            with open("application.json", 'w') as json_file:
-                json.dump(json_decoded, json_file)
     else:
         rsp = Response(rsp.text, status=rsp.status_code, content_type="text/plain")
     return rsp
 
 
+
 @app.route("/students/account", methods=["POST"])
-def update_account_info():
+@token_required
+def update_account_info(uni, email):
     request_data = request.get_json()
     uni, password = request_data['uni'], request_data['password']
-    rsp = requests.session().post(studenturl + 'account', verify=False, json={'uni': uni, 'password': password}, headers = request.headers)
+    rsp = requests.session().post(studenturl + 'account', verify=False, json={'uni': uni, 'password': password, 'email':email}, headers = request.headers)
     rsp = Response(rsp.text, status=rsp.status_code, content_type="text/plain")
     return rsp
+
+
 
 @app.route("/students/loginwithgoogle", methods=['GET', 'POST'])
 def login_with_google():
     request_data = request.get_json()
     rsp = requests.session().post(studenturl + 'loginwithgoogle', verify=False, json = request_data)
     if rsp.status_code == 200:
-        rsp_json = rsp.json()
         rsp = Response(json.dumps(rsp.json()), status=200, content_type="text/plain")
-        email = rsp_json["email"]
-        uni = email[:email.index('@')]
-        try:
-            with open("application.json") as json_file:
-                json_decoded = json.load(json_file)
-            json_decoded[uni] = {"uni": uni}
-            with open("application.json", 'w') as json_file:
-                json.dump(json_decoded, json_file)
-        except:
-            json_decoded = {}
-            json_decoded[uni] = {"uni": uni}
-            with open("application.json", 'w') as json_file:
-                json.dump(json_decoded, json_file)
     else:
         rsp = Response(rsp.text, status=rsp.status_code, content_type="text/plain")
-
     return rsp
 
 @app.route("/students/signup", methods=['POST'])
@@ -259,25 +246,23 @@ def get_student_by_input(uni="", email=""):
 
 
 @app.route("/students/profile", methods=["GET"])
-def get_profile_by_uni():
-    rsp = requests.session().get(studenturl + 'profile', verify=False, headers = request.headers)
+@token_required
+def get_profile_by_uni(uni, email):
+    if uni == 'N/A':
+        uni = email[:email.index('@')]
+    rsp = requests.session().get(studenturl + 'profile', verify=False, json = {"uni":uni}, headers = request.headers)
     if rsp.status_code == 404:
         return rsp.text
     else:
-        rsp_json = rsp.json()
-        uni = rsp_json["uni"]
-        del rsp_json['uni']
-        ###Add profile in the application.json file
-        with open("application.json") as json_file:
-            json_decoded = json.load(json_file)
-        json_decoded[uni]["profile"] = rsp_json
-        with open("application.json", 'w') as json_file:
-            json.dump(json_decoded, json_file)
         return Response(json.dumps(rsp.json()), status=200, content_type="application.json")
 
 @app.route("/students/profile", methods=["POST"])
-def update_profile():
+@token_required
+def update_profile(uni, email):
     request_data = request.get_json()
+    if uni == 'N/A':
+        uni = email[:email.index('@')]
+    request_data['uni'], request_data['email'] = uni, email
     rsp = requests.session().post(studenturl + 'profile', verify=False, json=request_data, headers = request.headers)
     rsp = Response(rsp.text, status=rsp.status_code, content_type="text/plain")
     return rsp
