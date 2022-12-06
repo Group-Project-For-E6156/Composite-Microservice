@@ -1,6 +1,6 @@
 from flask import Flask, Response, request, jsonify
 
-#from aioflask import Flask, request, render_template, g, redirect, Response, session
+from aioflask import Flask, request, render_template, g, redirect, Response, session
 from datetime import datetime
 import json
 from flask_cors import CORS
@@ -50,12 +50,40 @@ def token_required(f):
 
     return decorated
 
-def get_profile(uni):
+async def get_profile(uni):
     profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
     try:
         return profile_rsp.json()
     except:
         return False
+
+async def get_course(id):
+    courseurl = "http://127.0.0.1:5011/courses/"
+    course_rsp = requests.session().get(courseurl).json()
+    for item in course_rsp:
+        if item["Course_id"]==int(id):
+            return True
+    return False
+
+def get_preference(uni, course_id):
+    url = "http://127.0.0.1:5011/course/student_preferences/uni=" + uni
+    try:
+        rsp_json = requests.session().get(url).json()
+        print(rsp_json)
+        for item in rsp_json:
+            if item["Course_id"] == int(course_id):
+                prefered_dept, prefered_timezone = item["prefered_Dept"], item["prefered_Timezone"]
+                return [prefered_dept, prefered_timezone]
+        return False
+    except:
+        return False
+
+
+
+async def delete_preference(uni, course_id):
+    url = "http://127.0.0.1:5011/course/student_preference/delete/"
+    rsp = requests.session().post(url, verify=False, json={'uni':uni, 'course_id':course_id})
+    return rsp
 
 
 @app.route("/course/", methods=["GET"])
@@ -152,7 +180,7 @@ def browse_all_team(course_id = "", limit = "", offset = ""):
     return rsp
 
 @app.route("/team/add/",methods=["POST", "GET"])
-def add_team():
+async def add_team():
     if request.is_json:
         try:
             request_data = request.get_json()
@@ -164,6 +192,13 @@ def add_team():
         rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
         return rsp
     team_name, team_captain_uni, team_captain, course_id, number_needed, team_message = request_data['team_name'], request_data['team_captain_uni'], request_data['team_captain'], request_data['course_id'], request_data['number_needed'], request_data['team_message']
+    loop = asyncio.get_event_loop()
+    t1 = loop.create_task(get_profile(team_captain_uni))
+    t2 = loop.create_task(get_course(course_id))
+    t3 = loop.create_task(delete_preference(team_captain_uni, course_id))
+    profile, id, delete = await asyncio.gather(t1, t2, t3)
+    if not profile or not id:
+        return Response("You may need profile or add the course", status=404, content_type="text/plain")
     rsp = requests.session().post( teamurl + '/add', verify=False,
                                   json={'team_name': team_name, 'team_captain_uni': team_captain_uni, 'team_captain': team_captain, 'course_id': course_id,
                                         'number_needed': number_needed, 'team_message':team_message})
@@ -241,7 +276,7 @@ def browse_team_info_by_input(course_id = "", team_captain_uni = ""):
     return rsp
 
 @app.route("/team/add_member/", methods=["POST"])
-def add_team_member():
+async def add_team_member():
     if request.is_json:
         try:
             request_data = request.get_json()
@@ -253,6 +288,13 @@ def add_team_member():
         rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
         return rsp
     uni, student_name, team_id, course_id = request_data["uni"], request_data["student_name"], request_data["team_id"], request_data["course_id"]
+    loop = asyncio.get_event_loop()
+    t1 = loop.create_task(get_profile(uni))
+    t2 = loop.create_task(delete_preference(uni, course_id))
+    profile, delete = await asyncio.gather(t1, t2)
+    print(profile)
+    if not profile:
+        return Response("The uni you add does not exist!", status=404, content_type="text/plain")
     rsp = requests.session().post( teamurl + '/add_member', verify=False,
                                   json={'uni': uni, 'student_name':student_name, 'team_id': team_id,
                                         'course_id': course_id})
@@ -289,8 +331,11 @@ def delete_team_member():
 def find_my_teammate(course_id = "", uni = ""):
     if "course_id" in request.args and "uni" in request.args:
         course_id, uni = request.args['course_id'], request.args['uni']
-    rsp = requests.session().get(teamurl + '/find_my_teammate/?uni=' + uni + '&course_id=' + course_id,
-                                 verify=False)
+    preferences = get_preference(uni, course_id)
+    if not preferences:
+        return Response("No preference on this course has been found", status=404, content_type="text/plain")
+    dept, timezone = preferences[0], preferences[1]
+    rsp = requests.session().get(teamurl + '/find_my_teammate/?dept=' + dept + '&timezone=' + timezone, verify=False)
     if rsp.status_code == 200:
         rsp = Response(json.dumps(rsp.json()), status=200, content_type="application.json")
     else:
