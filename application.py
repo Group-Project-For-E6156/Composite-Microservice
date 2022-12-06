@@ -141,14 +141,14 @@ def get_course_preference_by_uni(uni = "", limit = "", offset = ""):
     return rsp
 
 @app.route("/team/", methods=["get"])
-def browse_all_team(course_id, limit, offset):
+def browse_all_team(course_id = "", limit = "", offset = ""):
     if "course_id" in request.args and "limit" in request.args and "offset" in request.args:
-        course_id = request.args["course_id"], limit=request.args["limit"], offset = request.args["offset"]
-    rsp = requests.session().get(teamurl+'?course_id=' + course_id + '&limit' + limit + '&offset=' + offset, verify=False)
+        course_id, limit, offset = request.args["course_id"], request.args["limit"], request.args["offset"]
+    rsp = requests.session().get(teamurl+'?course_id=' + course_id + '&limit=' + limit + '&offset=' + offset, verify=False)
     if rsp.status_code == 200:
         rsp = Response(json.dumps(rsp.json()), status=200, content_type="application.json")
     else:
-        rsp = Response("NOT FOUND", status=404, content_type="text/plain")
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
     return rsp
 
 @app.route("/team/add/",methods=["POST", "GET"])
@@ -164,7 +164,7 @@ def add_team():
         rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
         return rsp
     team_name, team_captain_uni, team_captain, course_id, number_needed, team_message = request_data['team_name'], request_data['team_captain_uni'], request_data['team_captain'], request_data['course_id'], request_data['number_needed'], request_data['team_message']
-    rsp = requests.session().post( + 'add', verify=False,
+    rsp = requests.session().post( teamurl + '/add', verify=False,
                                   json={'team_name': team_name, 'team_captain_uni': team_captain_uni, 'team_captain': team_captain, 'course_id': course_id,
                                         'number_needed': number_needed, 'team_message':team_message})
     if rsp.status_code == 200:
@@ -186,12 +186,12 @@ def edit_team():
         rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
         return rsp
     team_name, team_captain_uni, team_captain, course_id, number_needed, team_message = request_data['team_name'], request_data['team_captain_uni'], request_data['team_captain'], request_data['course_id'], request_data['number_needed'], request_data['team_message']
-    rsp = requests.session().post(+ 'edit', verify=False,
+    rsp = requests.session().post( teamurl + '/edit', verify=False,
                                   json={'team_name': team_name, 'team_captain_uni': team_captain_uni,
                                         'team_captain': team_captain, 'course_id': course_id,
                                         'number_needed': number_needed, 'team_message': team_message})
     if rsp.status_code == 200:
-        rsp = Response("TEAM CREATED", status=200, content_type="text/plain")
+        rsp = Response("TEAM EDITED", status=200, content_type="text/plain")
     else:
         rsp = Response(rsp.text, status=404, content_type="text/plain")
     return rsp
@@ -209,11 +209,90 @@ def delete_team():
         rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
         return rsp
     team_captain_uni, course_id, team_id = request_data["team_captain_uni"], request_data["course_id"], request_data["team_id"]
-    rsp = requests.session().post(+ 'edit', verify=False,
+    rsp = requests.session().post( teamurl + '/delete', verify=False,
                                   json={'team_captain_uni': team_captain_uni,
                                         'course_id': course_id, 'team_id': team_id})
     if rsp.status_code == 200:
-        rsp = Response("TEAM CREATED", status=200, content_type="text/plain")
+        rsp = Response("TEAM DELETED", status=200, content_type="text/plain")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
+@app.route("/team/team_member/", methods=["get"])
+def browse_all_team_member(team_id = "", course_id = ""):
+    if "course_id" in request.args and "team_id" in request.args:
+        course_id, team_id = request.args['course_id'], request.args['team_id']
+    rsp = requests.session().get(teamurl+'/team_member/?team_id=' + team_id + '&course_id=' + course_id, verify=False)
+    if rsp.status_code == 200:
+        rsp = Response(json.dumps(rsp.json()), status=200, content_type="application.json")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
+@app.route("/team/info/", methods=["get"])
+def browse_team_info_by_input(course_id = "", team_captain_uni = ""):
+    if "course_id" in request.args and "team_captain_uni" in request.args:
+        course_id, team_captain_uni = request.args['course_id'], request.args['team_captain_uni']
+    rsp = requests.session().get(teamurl + '/info/?team_captain_uni=' + team_captain_uni + '&course_id=' + course_id, verify=False)
+    if rsp.status_code == 200:
+        rsp = Response(json.dumps(rsp.json()), status=200, content_type="application.json")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
+@app.route("/team/add_member/", methods=["POST"])
+def add_team_member():
+    if request.is_json:
+        try:
+            request_data = request.get_json()
+        except ValueError:
+            return Response("[COURSE] UNABLE TO RETRIEVE REQUEST", status=400, content_type="text/plain")
+    else:
+        return Response("[COURSE] INVALID POST FORMAT: SHOULD BE JSON", status=400, content_type="text/plain")
+    if not request_data:
+        rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
+        return rsp
+    uni, student_name, team_id, course_id = request_data["uni"], request_data["student_name"], request_data["team_id"], request_data["course_id"]
+    rsp = requests.session().post( teamurl + '/add_member', verify=False,
+                                  json={'uni': uni, 'student_name':student_name, 'team_id': team_id,
+                                        'course_id': course_id})
+    if rsp.status_code == 200:
+        rsp = Response("Add Member successful!", status=200, content_type="text/plain")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
+@app.route("/team/delete_member/",methods=["POST"])
+def delete_team_member():
+    if request.is_json:
+        try:
+            request_data = request.get_json()
+        except ValueError:
+            return Response("[COURSE] UNABLE TO RETRIEVE REQUEST", status=400, content_type="text/plain")
+    else:
+        return Response("[COURSE] INVALID POST FORMAT: SHOULD BE JSON", status=400, content_type="text/plain")
+    if not request_data:
+        rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
+        return rsp
+    uni, team_id, course_id = request_data["uni"], request_data["team_id"], request_data["course_id"]
+    rsp = requests.session().post( teamurl + '/delete_member', verify=False,
+                                  json={'uni': uni, 'team_id': team_id,
+                                        'course_id': course_id})
+    if rsp.status_code == 200:
+        rsp = Response("DELETE SUCCESS", status=200, content_type="text/plain")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
+
+@app.route("/team/find_my_teammate/", methods=["get"])
+def find_my_teammate(course_id = "", uni = ""):
+    if "course_id" in request.args and "uni" in request.args:
+        course_id, uni = request.args['course_id'], request.args['uni']
+    rsp = requests.session().get(teamurl + '/find_my_teammate/?uni=' + uni + '&course_id=' + course_id,
+                                 verify=False)
+    if rsp.status_code == 200:
+        rsp = Response(json.dumps(rsp.json()), status=200, content_type="application.json")
     else:
         rsp = Response(rsp.text, status=404, content_type="text/plain")
     return rsp
@@ -353,5 +432,5 @@ def resend_confirmation():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=10000)
+    app.run(host="127.0.0.1", port=1000)
     # app.run(ssl_context="adhoc")
