@@ -1,6 +1,6 @@
 from flask import Flask, Response, request, jsonify
 
-from aioflask import Flask, request, render_template, g, redirect, Response, session
+#from aioflask import Flask, request, render_template, g, redirect, Response, session
 from datetime import datetime
 import json
 from flask_cors import CORS
@@ -9,9 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from google.oauth2 import id_token
-from pip._vendor import cachecontrol
-import google.auth.transport.requests
+
 import requests
 import urllib
 import json
@@ -28,6 +26,7 @@ CORS(app)
 courseurl = "http://127.0.0.1:5011/course/"
 coursepreference = "http://127.0.0.1:5011/course/student_preference/"
 studenturl = "http://127.0.0.1:2333/students/"
+teamurl = "http://127.0.0.1:2233/team"
 
 # decorator for verifying the JWT
 def token_required(f):
@@ -70,7 +69,6 @@ def get_course_by_name(course_name = ""):
         rsp = Response("NOT FOUND", status=404, content_type="text/plain")
     return rsp
 
-
 @app.route("/course/add", methods=["POST"])
 def insert_courses():
     if request.is_json:
@@ -95,7 +93,7 @@ def insert_courses():
     return rsp
 
 @app.route("/course/student_preference/add",methods=["POST"])
-async def add_course_preference():
+def add_course_preference():
     if request.is_json:
         try:
             request_data = request.get_json()
@@ -125,7 +123,7 @@ async def add_course_preference():
     return rsp
 
 @app.route("/course/student_preference/", methods=["GET"])
-async def get_course_preference_by_uni(uni = "", limit = "", offset = ""):
+def get_course_preference_by_uni(uni = "", limit = "", offset = ""):
     if "uni" in request.args and "limit" in request.args and "offset" in request.args:
         uni, limit, offset = request.args["uni"], request.args["limit"], request.args["offset"]
     profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
@@ -141,6 +139,85 @@ async def get_course_preference_by_uni(uni = "", limit = "", offset = ""):
     else:
         rsp = Response("NOT FOUND", status=404, content_type="text/plain")
     return rsp
+
+@app.route("/team/", methods=["get"])
+def browse_all_team(course_id, limit, offset):
+    if "course_id" in request.args and "limit" in request.args and "offset" in request.args:
+        course_id = request.args["course_id"], limit=request.args["limit"], offset = request.args["offset"]
+    rsp = requests.session().get(teamurl+'?course_id=' + course_id + '&limit' + limit + '&offset=' + offset, verify=False)
+    if rsp.status_code == 200:
+        rsp = Response(json.dumps(rsp.json()), status=200, content_type="application.json")
+    else:
+        rsp = Response("NOT FOUND", status=404, content_type="text/plain")
+    return rsp
+
+@app.route("/team/add/",methods=["POST", "GET"])
+def add_team():
+    if request.is_json:
+        try:
+            request_data = request.get_json()
+        except ValueError:
+            return Response("[COURSE] UNABLE TO RETRIEVE REQUEST", status=400, content_type="text/plain")
+    else:
+        return Response("[COURSE] INVALID POST FORMAT: SHOULD BE JSON", status=400, content_type="text/plain")
+    if not request_data:
+        rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
+        return rsp
+    team_name, team_captain_uni, team_captain, course_id, number_needed, team_message = request_data['team_name'], request_data['team_captain_uni'], request_data['team_captain'], request_data['course_id'], request_data['number_needed'], request_data['team_message']
+    rsp = requests.session().post( + 'add', verify=False,
+                                  json={'team_name': team_name, 'team_captain_uni': team_captain_uni, 'team_captain': team_captain, 'course_id': course_id,
+                                        'number_needed': number_needed, 'team_message':team_message})
+    if rsp.status_code == 200:
+        rsp = Response("TEAM CREATED", status=200, content_type="text/plain")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
+@app.route("/team/edit/",methods=["POST", "GET"])
+def edit_team():
+    if request.is_json:
+        try:
+            request_data = request.get_json()
+        except ValueError:
+            return Response("[COURSE] UNABLE TO RETRIEVE REQUEST", status=400, content_type="text/plain")
+    else:
+        return Response("[COURSE] INVALID POST FORMAT: SHOULD BE JSON", status=400, content_type="text/plain")
+    if not request_data:
+        rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
+        return rsp
+    team_name, team_captain_uni, team_captain, course_id, number_needed, team_message = request_data['team_name'], request_data['team_captain_uni'], request_data['team_captain'], request_data['course_id'], request_data['number_needed'], request_data['team_message']
+    rsp = requests.session().post(+ 'edit', verify=False,
+                                  json={'team_name': team_name, 'team_captain_uni': team_captain_uni,
+                                        'team_captain': team_captain, 'course_id': course_id,
+                                        'number_needed': number_needed, 'team_message': team_message})
+    if rsp.status_code == 200:
+        rsp = Response("TEAM CREATED", status=200, content_type="text/plain")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
+@app.route("/team/delete/", methods=["POST", "GET"])
+def delete_team():
+    if request.is_json:
+        try:
+            request_data = request.get_json()
+        except ValueError:
+            return Response("[COURSE] UNABLE TO RETRIEVE REQUEST", status=400, content_type="text/plain")
+    else:
+        return Response("[COURSE] INVALID POST FORMAT: SHOULD BE JSON", status=400, content_type="text/plain")
+    if not request_data:
+        rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
+        return rsp
+    team_captain_uni, course_id, team_id = request_data["team_captain_uni"], request_data["course_id"], request_data["team_id"]
+    rsp = requests.session().post(+ 'edit', verify=False,
+                                  json={'team_captain_uni': team_captain_uni,
+                                        'course_id': course_id, 'team_id': team_id})
+    if rsp.status_code == 200:
+        rsp = Response("TEAM CREATED", status=200, content_type="text/plain")
+    else:
+        rsp = Response(rsp.text, status=404, content_type="text/plain")
+    return rsp
+
 
 @app.route("/course/student_preference/edit/", methods=["GET", "POST"])
 def edit_course_preference():
@@ -273,6 +350,8 @@ def resend_confirmation():
     rsp = requests.session().post(studenturl + 'resend', verify=False, json=request_data)
     return rsp.text
 
+
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=1000)
+    app.run(host="127.0.0.1", port=10000)
     # app.run(ssl_context="adhoc")
