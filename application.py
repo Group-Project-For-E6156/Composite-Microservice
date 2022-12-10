@@ -80,6 +80,11 @@ async def delete_preference(uni, course_id):
     return rsp
 
 
+
+@app.route("/", methods = ['GET'])
+def init():
+    return "hello world"
+
 @app.route("/course/", methods=["GET"])
 def get_course_by_name(course_name=""):
     if "course_name" in request.args:
