@@ -14,10 +14,10 @@ app = Flask(__name__, template_folder="templates")
 app.config['SECRET_KEY'] = 'longer-secret-is-better'
 CORS(app)
 
-courseurl = "http://127.0.0.1:5011/course/"
-coursepreference = "http://127.0.0.1:5011/course/student_preference/"
-studenturl = "http://127.0.0.1:2333/students/"
-teamurl = "http://127.0.0.1:2233/team"
+courseurl = "http://ec2-3-83-221-153.compute-1.amazonaws.com:5011/course/"
+coursepreference = "http://ec2-3-83-221-153.compute-1.amazonaws.com:5011/course/student_preference/"
+studenturl = "http://ec2-54-161-242-249.compute-1.amazonaws.com:8000/students/"
+teamurl = "http://ec2-3-84-34-200.compute-1.amazonaws.com:2233/team"
 
 
 # decorator for verifying the JWT
@@ -44,7 +44,7 @@ def token_required(f):
 
 
 async def get_profile(uni):
-    profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
+    profile_rsp = requests.session().get("http://ec2-54-161-242-249.compute-1.amazonaws.com:8000/students/" + "profile", json={"uni": uni})
     try:
         return profile_rsp.json()
     except:
@@ -52,7 +52,7 @@ async def get_profile(uni):
 
 
 async def get_course(id):
-    courseurl = "http://127.0.0.1:5011/courses/"
+    courseurl = "http://ec2-3-83-221-153.compute-1.amazonaws.com:5011/courses/"
     course_rsp = requests.session().get(courseurl).json()
     for item in course_rsp:
         if item["Course_id"] == int(id):
@@ -61,7 +61,7 @@ async def get_course(id):
 
 
 def get_preference(uni, course_id):
-    url = "http://127.0.0.1:5011/course/student_preferences/uni=" + uni
+    url = "http://ec2-3-83-221-153.compute-1.amazonaws.com:5011/course/student_preferences/uni=" + uni
     try:
         rsp_json = requests.session().get(url).json()
         print(rsp_json)
@@ -75,7 +75,7 @@ def get_preference(uni, course_id):
 
 
 async def delete_preference(uni, course_id):
-    url = "http://127.0.0.1:5011/course/student_preference/delete/"
+    url = "http://ec2-3-83-221-153.compute-1.amazonaws.com:5011/course/student_preference/delete/"
     rsp = requests.session().post(url, verify=False, json={'uni': uni, 'course_id': course_id})
     return rsp
 
@@ -135,7 +135,7 @@ def add_course_preference():
         rsp = Response("[COURSE] INVALID INPUT", status=404, content_type="text/plain")
         return rsp
     uni = request_data['uni']
-    profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
+    profile_rsp = requests.session().get("http://ec2-54-161-242-249.compute-1.amazonaws.com:8000/students/" + "profile", json={"uni": uni})
     try:
         profile_rsp = profile_rsp.json()
     except:
@@ -159,7 +159,7 @@ def add_course_preference():
 def get_course_preference_by_uni(uni="", limit="", offset=""):
     if "uni" in request.args and "limit" in request.args and "offset" in request.args:
         uni, limit, offset = request.args["uni"], request.args["limit"], request.args["offset"]
-    profile_rsp = requests.session().get("http://127.0.0.1:2333/students/" + "profile", json={"uni": uni})
+    profile_rsp = requests.session().get("http://ec2-54-161-242-249.compute-1.amazonaws.com:8000/students/" + "profile", json={"uni": uni})
     try:
         profile_rsp = profile_rsp.json()
     except:
@@ -514,6 +514,5 @@ def resend_confirmation():
     return rsp.text
 
 
-if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=10000)
+app.run(host="0.0.0.0", port=10000)
     # app.run(ssl_context="adhoc")
